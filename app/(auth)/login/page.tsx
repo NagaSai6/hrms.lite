@@ -14,7 +14,9 @@ export default function page() {
         <Auth
           supabaseClient={supabase}
           appearance={{ theme: ThemeSupa }}
-          providers={["google"]}
+          providers={["google", "linkedin"]}
+          magicLink={true}
+          socialLayout="horizontal"
         />
       </div>
     </div>
