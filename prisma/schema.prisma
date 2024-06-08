@@ -1,0 +1,157 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [uuid_ossp(map: "uuid-ossp", schema: "extensions")]
+}
+
+// /*
+// This Prisma schema defines the structure of a multi-tenant system with organizations, teams, and users. 
+
+// 1. User: Represents individual users in the system. Each user has a unique email, and can be part of multiple organizations and teams. Additional attributes include name, designation, profile image, join date, birthday, and active status.
+
+// 2. Organization: Represents different organizations in the system. Each organization has a unique name, an image, and a user who owns the organization. Organizations have multiple teams, roles, and team member roles.
+
+// 3. Team: Represents different teams within an organization. Each team has a unique name and consists of multiple members. 
+
+// 4. TeamMember: Represents the many-to-many relationship between User and Team models. It includes the roles of the team member.
+
+// 5. TeamMemberRole: Represents the many-to-many relationship between TeamMember and Roles models. It links a team member, a role, and an organization.
+
+// 6. Roles: Represents different roles that can be assigned to users in an organization. Each role has a unique name and slug. 
+
+// All models have timestamps for tracking creation and updates.
+// */
+model User {
+  id                     Int                     @id @default(autoincrement())
+  email                  String                  @unique // User's unique email address
+  name                   String // User's name
+  updatedAt              DateTime                @default(now()) // Last update timestamp
+  createdAt              DateTime                @default(now()) // Creation timestamp
+  organization           Organization[] // User can be part of multiple organizations
+  teams                  TeamMember[] // User can be part of multiple teams
+  designation            String? // User's designation in the organization
+  image                  String? // User's profile image
+  joinedAt               DateTime? // Date when user joined the organization
+  birthday               DateTime? // User's birthday
+  is_active              Boolean                 @default(false) // Whether the user is active or not
+  leaveApplications      LeaveApplication[]      @relation("ApplicantToLeaveApplication") // Leave applications submitted by the user
+  reviewedApplications   LeaveApplication[]      @relation("ReviewerToLeaveApplication") // Applications reviewed by the user
+  leaveApplicationEvents LeaveApplicationEvent[] // Events related to leave applications
+}
+
+// Organization model represents different organizations in the system.
+model Organization {
+  id              Int              @id @default(autoincrement()) // Unique identifier
+  name            String           @unique // Organization's unique name
+  updatedAt       DateTime         @default(now()) // Last update timestamp
+  createdAt       DateTime         @default(now()) // Creation timestamp
+  image           String? // Organization's image
+  ownerId         Int // ID of the user who owns the organization
+  user            User             @relation(fields: [ownerId], references: [id]) // Relation to User model
+  teams           Team[] // Teams under this organization
+  roles           Roles[] // Roles defined in this organization
+  teamMemberRoles TeamMemberRole[] // Added relation to TeamMemberRole model
+}
+
+// Team model represents different teams in an organization.
+model Team {
+  id             Int          @id @default(autoincrement()) // Unique identifier
+  name           String       @unique // Team's unique name
+  updatedAt      DateTime     @default(now()) // Last update timestamp
+  createdAt      DateTime     @default(now()) // Creation timestamp
+  members        TeamMember[] // Members of the team
+  organizationId Int // ID of the organization this team belongs to
+  organization   Organization @relation(fields: [organizationId], references: [id]) // Relation to Organization model
+}
+
+// TeamMember model represents the many-to-many relationship between User and Team models.
+model TeamMember {
+  id              Int              @id @default(autoincrement()) // Unique identifier
+  teamId          Int // ID of the team
+  memberId        Int // ID of the user who is a member of the team
+  updatedAt       DateTime         @default(now()) // Last update timestamp
+  createdAt       DateTime         @default(now()) // Creation timestamp
+  team            Team             @relation(fields: [teamId], references: [id]) // Relation to Team model
+  user            User             @relation(fields: [memberId], references: [id]) // Relation to User model
+  teamMemberRoles TeamMemberRole[] // Relation to TeamMemberRole model, represents the roles of the team member
+}
+
+// TeamMemberRole model represents the many-to-many relationship between TeamMember and Roles models.
+model TeamMemberRole {
+  id             Int          @id @default(autoincrement()) // Unique identifier
+  teamMemberId   Int // ID of the team member
+  roleId         Int // ID of the role
+  organizationId Int // ID of the organization
+  teamMember     TeamMember   @relation(fields: [teamMemberId], references: [id]) // Relation to TeamMember model
+  role           Roles        @relation(fields: [roleId], references: [id]) // Relation to Roles model
+  organization   Organization @relation(fields: [organizationId], references: [id]) // Relation to Organization model
+  createdAt      DateTime     @default(now()) // Creation timestamp
+  updatedAt      DateTime     @default(now()) // Last update timestamp
+}
+
+// Roles model represents different roles that can be assigned to users in an organization.
+model Roles {
+  id              Int              @id @default(autoincrement()) // Unique identifier
+  name            String           @unique // Role's unique name
+  slug            String           @unique // Unique identifier for the role
+  organizationId  Int // ID of the organization this role belongs to
+  organization    Organization     @relation(fields: [organizationId], references: [id]) // Relation to Organization model
+  updatedAt       DateTime         @default(now()) // Last update timestamp
+  createdAt       DateTime         @default(now()) // Creation timestamp
+  teamMemberRoles TeamMemberRole[] // Relation to TeamMemberRole model, represents the team members who have this role
+  rolePermissions RolePermission[] // Relation to RolePermission model, represents the permissions assigned to this role
+}
+
+model Permission {
+  id              Int              @id @default(autoincrement()) // Unique identifier
+  name            String           @unique // Permission's unique name
+  rolePermissions RolePermission[] // Relation to RolePermission model, represents the roles that have this permission
+}
+
+model RolePermission {
+  id           Int        @id @default(autoincrement()) // Unique identifier
+  roleId       Int // ID of the role
+  permissionId Int // ID of the permission
+  role         Roles      @relation(fields: [roleId], references: [id]) // Relation to Roles model
+  permission   Permission @relation(fields: [permissionId], references: [id]) // Relation to Permission model
+}
+
+model LeaveApplication {
+  id                    Int                     @id @default(autoincrement()) // Unique identifier
+  applicantId           Int // ID of the user applying for leave 
+  applicant             User                    @relation("ApplicantToLeaveApplication", fields: [applicantId], references: [id]) // Relation to User model
+  startAt               DateTime // Start date of the leave
+  endAt                 DateTime // End date of the leave
+  reason                String // Reason for the leave
+  attachment            String? // Optional attachment for the leave application
+  status                LeaveApplicationStatus  @default(PENDING) // Status of the application, default is "pending"
+  reviewedById          Int // ID of the user who reviewed the application, nullable because application may not be reviewed yet
+  reviewedBy            User                    @relation("ReviewerToLeaveApplication", fields: [reviewedById], references: [id]) // Relation to User model, nullable because application may not be reviewed yet
+  updatedAt             DateTime                @default(now()) // Last update timestamp
+  createdAt             DateTime                @default(now()) // Creation timestamp
+  LeaveApplicationEvent LeaveApplicationEvent[]
+}
+
+//   events related to a leave application
+model LeaveApplicationEvent {
+  id                 Int              @id @default(autoincrement()) // Unique identifier
+  leaveApplicationId Int // ID of the leave application this event is related to
+  leaveApplication   LeaveApplication @relation(fields: [leaveApplicationId], references: [id]) // Relation to LeaveApplication model
+  performedById      Int // ID of the user who performed this event
+  performedBy        User             @relation(fields: [performedById], references: [id]) // Relation to User model
+  type               String // Type of the event (e.g., "reviewed", "approved", "rejected")
+  comment            String? // Optional comment about the event
+  createdAt          DateTime         @default(now()) // When this event was created
+}
+
+enum LeaveApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
